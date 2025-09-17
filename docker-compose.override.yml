@@ -1,6 +1,6 @@
 services:
   queue:
-    image: 'sail-8.4/app'       # такий самий образ, як у laravel.test
+    image: 'sail-8.4/app'
     depends_on:
       - redis
       - mysql

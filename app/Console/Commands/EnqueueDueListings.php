@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\CheckListingPrice;
+use App\Models\Listing;
 use Illuminate\Console\Command;
 
 class EnqueueDueListings extends Command
@@ -11,20 +13,31 @@ class EnqueueDueListings extends Command
      *
      * @var string
      */
-    protected $signature = 'app:enqueue-due-listings';
+    protected $signature = 'listings:enqueue-due';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Command description';
+    protected $description = 'Find ads whose time is up for review and add the job to the queue.';
 
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(): int
     {
-        //
+        Listing::where(function ($q) {
+            $q->whereNull('next_check_at')
+                ->orWhere('next_check_at', '<=', now());
+        })
+            ->where('status', 'active')
+            ->orderBy('next_check_at')
+            ->limit(200)
+            ->get()
+            ->each(fn ($l) => CheckListingPrice::dispatch($l->id))->onQueue('price-checks');
+
+        $this->info('Enqueued due listings');
+        return self::SUCCESS;
     }
 }

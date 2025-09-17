@@ -72,7 +72,7 @@ class CheckListingPrice implements ShouldQueue
                     'seen_at'    => now(),
                 ]);
 
-                NotifySubscribers::dispatch($listing->id, $old, $new)->onQueue('emails');
+                NotifySubscribers::dispatch($listing->id, $old, $new)->onQueue('notifications');
             } else {
                 $listing->save();
             }

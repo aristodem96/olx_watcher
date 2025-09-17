@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\SubscribeRequest;
+use App\Jobs\CheckListingPrice;
 use App\Models\Listing;
 use App\Models\Subscription;
 use Illuminate\Http\JsonResponse;
@@ -25,7 +26,7 @@ class SubscriptionController extends Controller
             'email'      => $email,
         ]);
 
-//        CheckListingPrice::dispatch($listing->id);
+        CheckListingPrice::dispatch($listing->id)->onQueue('price-checks');
 
         return response()->json([
             'subscription_id' => $subscription->id,

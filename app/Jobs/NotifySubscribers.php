@@ -34,7 +34,10 @@ class NotifySubscribers implements ShouldQueue
             ->pluck('email');
 
         foreach ($emails as $email) {
-            Mail::to($email)->queue(new PriceChangedMail($listing, $this->oldPrice, $this->newPrice));
+            Mail::to($email)->queue(
+                (new PriceChangedMail($listing, $this->oldPrice, $this->newPrice))
+                    ->onQueue('notifications')
+            );
         }
     }
 }
