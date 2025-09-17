@@ -1,0 +1,42 @@
+services:
+  queue:
+    image: 'sail-8.4/app'       # такий самий образ, як у laravel.test
+    depends_on:
+      - redis
+      - mysql
+      - mailpit
+    env_file:
+      - .env
+    environment:
+      WWWUSER: '${WWWUSER}'
+      LARAVEL_SAIL: 1
+    working_dir: /var/www/html
+    volumes:
+      - .:/var/www/html
+    command: >
+      php artisan queue:work
+      --queue=price-checks,notifications
+      --sleep=1 --tries=3 --timeout=60
+    restart: unless-stopped
+    networks:
+      - sail
+
+  scheduler:
+    image: 'sail-8.4/app'
+    depends_on:
+      - redis
+      - mysql
+      - mailpit
+    env_file:
+      - .env
+    environment:
+      WWWUSER: '${WWWUSER}'
+      LARAVEL_SAIL: 1
+    working_dir: /var/www/html
+    volumes:
+      - .:/var/www/html
+    command: >
+      php artisan schedule:work
+    restart: unless-stopped
+    networks:
+      - sail
