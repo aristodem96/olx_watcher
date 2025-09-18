@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use GuzzleHttp\Client;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\DomCrawler\Crawler;
 
 class PriceFetcher
@@ -10,10 +11,16 @@ class PriceFetcher
     public function __construct(private ?Client $http = null)
     {
         $this->http = $http ?: new Client([
-            'timeout' => 10,
+            'timeout' => 12,
             'headers' => [
-                'User-Agent' => 'Mozilla/5.0 (compatible; PriceWatcher/1.0)'
+                // “людський” набір заголовків
+                'User-Agent'      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36',
+                'Accept'          => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language' => 'uk-UA,uk;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Cache-Control'   => 'no-cache',
+                'Pragma'          => 'no-cache',
             ],
+            'allow_redirects' => true,
         ]);
     }
 
@@ -24,6 +31,8 @@ class PriceFetcher
         if ($lastModified) $headers['If-Modified-Since'] = gmdate('D, d M Y H:i:s \G\M\T', strtotime($lastModified));
 
         $resp = $this->http->get($url, ['headers' => $headers]);
+        Log::info('***RESPONSE STATUS CODE***');
+        Log::info($resp->getStatusCode());
         if ($resp->getStatusCode() === 304) {
             return ['not_modified' => true];
         }
@@ -41,46 +50,58 @@ class PriceFetcher
     {
         $c = new Crawler($html);
 
-        foreach ($c->filter('script[type="application/ld+json"]') as $node) {
-            $json = json_decode($node->textContent, true);
-            $items = is_array($json) ? $json : [$json];
-            foreach ($items as $j) {
-                $offers = $j['offers'] ?? null;
-                if (!$offers) continue;
-                $offersList = is_array($offers) && array_is_list($offers) ? $offers : [$offers];
-                foreach ($offersList as $o) {
-                    if (!isset($o['price'])) continue;
-                    $price = (int) preg_replace('/\D+/', '', (string) $o['price']);
-                    if ($price > 0) {
-                        $cur = $o['priceCurrency'] ?? null;
-                        return [$price, $cur ? strtoupper($cur) : null];
-                    }
+        $node = $c->filter('[data-testid="ad-price-container"] h3');
+        if ($node->count() > 0) {
+            $text = trim($node->first()->text(null, true));
+            $text = str_replace(["\u{00A0}", "\u{202F}", "\u{2009}"], ' ', $text);
+
+            if (preg_match('/(\d[\d \.,]{0,12})\s*(грн\.?|uah|usd|eur|₴|\$|€)/iu', $text, $m)) {
+                $price = self::toIntPrice($m[1]);
+                $cur   = $this->normalizeCurrency($m[2]);
+                if ($price > 0) {
+                    return [$price, $cur];
+                }
+            }
+
+            if (preg_match('/(догов[оі]рна|безкоштовно)/iu', $text)) {
+                return [null, null];
+            }
+        }
+
+        if (preg_match('~data-testid=["\']ad-price-container["\'][^>]*>.*?<h3[^>]*>\s*([^<]+)\s*</h3>~si', $html, $m)) {
+            $txt = html_entity_decode(trim($m[1]));
+            $txt = str_replace(["\u{00A0}", "\u{202F}", "\u{2009}"], ' ', $txt);
+            if (preg_match('/(\d[\d \.,]{0,12})\s*(грн\.?|uah|usd|eur|₴|\$|€)/iu', $txt, $mm)) {
+                $price = self::toIntPrice($mm[1]);
+                $cur   = $this->normalizeCurrency($mm[2]);
+                if ($price > 0) {
+                    return [$price, $cur];
                 }
             }
         }
 
-        $nodes = $c->filter('[data-testid="ad-price-container"] h3, [data-testid="ad-price-container"]');
-        if ($nodes->count()) {
-            $text = trim($nodes->first()->text());
-            $text = preg_replace('/\x{00A0}/u', ' ', $text);
-
-            $price = (int) preg_replace('/\D+/', '', $text);
-
-            $cur = null;
-            if (preg_match('/(USD|EUR|UAH|\$|€|₴|грн)/iu', $text, $m)) {
-                $sym = strtoupper($m[1]);
-                $map = [
-                    '$' => 'USD', 'USD' => 'USD',
-                    '€' => 'EUR', 'EUR' => 'EUR',
-                    '₴' => 'UAH', 'ГРН' => 'UAH', 'UAH' => 'UAH',
-                ];
-                $cur = $map[$sym] ?? $cur;
-            }
-
-            if ($price > 0) return [$price, $cur];
-        }
-
         return [null, null];
     }
+
+    private function normalizeCurrency(string $raw): ?string
+    {
+        $sym = mb_strtolower(rtrim($raw, '.'), 'UTF-8');
+        return match ($sym) {
+            'грн','uah','₴' => 'UAH',
+            'usd','$'       => 'USD',
+            'eur','€'       => 'EUR',
+            default         => null,
+        };
+    }
+
+    private static function toIntPrice(string $raw): int
+    {
+        $digits = preg_replace('/\D+/', '', $raw) ?? '';
+        if ($digits === '') return 0;
+        $digits = substr($digits, 0, 10);
+        $val = (int) $digits;
+        return ($val > 0 && $val < 1_000_000_000) ? $val : 0;
+    }
+
 
 }

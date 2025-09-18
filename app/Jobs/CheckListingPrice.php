@@ -11,6 +11,7 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class CheckListingPrice implements ShouldQueue
 {
@@ -30,8 +31,12 @@ class CheckListingPrice implements ShouldQueue
      */
     public function handle(PriceFetcher $fetcher): void
     {
+        Log::info('Start CheckListingPrice handle job');
         $lock = Cache::lock("listing:{$this->listingId}:lock", 120);
-        if (!$lock->get()) return;
+        if (!$lock->get()) {
+            $this->release(5);
+            return;
+        }
 
         try {
             $listing = Listing::find($this->listingId);
@@ -43,6 +48,8 @@ class CheckListingPrice implements ShouldQueue
                 optional($listing->last_modified)?->toDateTimeString()
             );
 
+            Log::info('********FETCHER DATA: ' . json_encode($data));
+
             if (!empty($data['not_modified'])) {
                 $listing->update([
                     'last_checked_at' => now(),
@@ -51,7 +58,7 @@ class CheckListingPrice implements ShouldQueue
                 return;
             }
 
-            $old = $listing->last_price;
+            $old = $listing->last_price ?? null;
             $new = $data['price'] ?? null;
             $cur = $data['currency'] ?? $listing->currency;
 
@@ -72,11 +79,15 @@ class CheckListingPrice implements ShouldQueue
                     'seen_at'    => now(),
                 ]);
 
-                NotifySubscribers::dispatch($listing->id, $old, $new)->onQueue('notifications');
+                NotifySubscribers::dispatch($listing->id, $old, $new, $cur)->onQueue('notifications');
             } else {
                 $listing->save();
             }
-        } finally {
+        }
+        catch (\Exception $e) {
+            Log::info($e);
+        }
+        finally {
             optional($lock)->release();
         }
     }

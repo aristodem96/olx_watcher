@@ -10,14 +10,14 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-class PriceChangedMail extends Mailable
+class PriceChangedMail extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
     /**
      * Create a new message instance.
      */
-    public function __construct(public Listing $listing, public ?int $old, public int $new) {}
+    public function __construct(public Listing $listing, public ?int $old, public int $new, public string $cur) {}
 
     /**
      * Get the message envelope.

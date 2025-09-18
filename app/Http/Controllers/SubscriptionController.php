@@ -50,6 +50,7 @@ class SubscriptionController extends Controller
                 'last_price'      => $subscription->listing->last_price,
                 'currency'        => $subscription->listing->currency,
                 'last_checked_at' => $subscription->listing->last_checked_at,
+                'next_check_at'   => $subscription->listing->next_check_at,
             ],
         ]);
     }

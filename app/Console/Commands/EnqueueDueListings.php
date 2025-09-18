@@ -35,7 +35,7 @@ class EnqueueDueListings extends Command
             ->orderBy('next_check_at')
             ->limit(200)
             ->get()
-            ->each(fn ($l) => CheckListingPrice::dispatch($l->id))->onQueue('price-checks');
+            ->each(fn ($l) => CheckListingPrice::dispatch($l->id)->onQueue('price-checks'));
 
         $this->info('Enqueued due listings');
         return self::SUCCESS;

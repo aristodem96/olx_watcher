@@ -19,7 +19,7 @@ class NotifySubscribers implements ShouldQueue
     /**
      * Create a new job instance.
      */
-    public function __construct(public int $listingId, public ?int $oldPrice, public int $newPrice) {}
+    public function __construct(public int $listingId, public ?int $oldPrice, public int $newPrice, public string $cur) {}
 
     /**
      * Execute the job.
@@ -29,13 +29,15 @@ class NotifySubscribers implements ShouldQueue
         $listing = Listing::find($this->listingId);
         if (!$listing) return;
 
-        $emails = Subscription::where('listing_id', $listing->id)
-            ->whereNotNull('email_verified_at')
-            ->pluck('email');
+//        $emails = Subscription::where('listing_id', $listing->id)
+//            ->whereNotNull('email_verified_at')
+//            ->pluck('email');
+
+        $emails = Subscription::where('listing_id', $listing->id)->pluck('email');
 
         foreach ($emails as $email) {
             Mail::to($email)->queue(
-                (new PriceChangedMail($listing, $this->oldPrice, $this->newPrice))
+                (new PriceChangedMail($listing, $this->oldPrice, $this->newPrice, $this->cur))
                     ->onQueue('notifications')
             );
         }
