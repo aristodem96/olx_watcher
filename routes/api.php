@@ -10,3 +10,10 @@ Route::get('/user', function (Request $request) {
 
 Route::post('/subscriptions', [SubscriptionController::class, 'store']);
 Route::get('/subscriptions/{subscription}', [SubscriptionController::class, 'show']);
+
+Route::get('/subscriptions/{subscription}/verify', [SubscriptionController::class, 'verify'])
+    ->middleware('signed')
+    ->name('subscriptions.verify');
+
+Route::post('/subscriptions/{subscription}/resend-verification', [SubscriptionController::class, 'resend'])
+    ->name('subscriptions.resend');

@@ -17,21 +17,13 @@ class CheckListingPrice implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /**
-     * Create a new job instance.
-     */
-
     public $tries   = 3;
     public $backoff = [10, 30, 60];
 
     public function __construct(public int $listingId) {}
 
-    /**
-     * Execute the job.
-     */
     public function handle(PriceFetcher $fetcher): void
     {
-        Log::info('Start CheckListingPrice handle job');
         $lock = Cache::lock("listing:{$this->listingId}:lock", 120);
         if (!$lock->get()) {
             $this->release(5);
@@ -42,13 +34,45 @@ class CheckListingPrice implements ShouldQueue
             $listing = Listing::find($this->listingId);
             if (!$listing || $listing->status !== 'active') return;
 
+            $cacheKey = "listing:{$listing->id}:last_fetch";
+            $cached   = Cache::get($cacheKey);
+
+            if ($cached !== null) {
+                $old = $listing->last_price;
+                $new = $cached['price'] ?? null;
+                $cur = $cached['currency'] ?? $listing->currency;
+                Log::info('***CACHE:***');
+                Log::info('New price: ' . $new);
+                Log::info('OLD price: ' . $old);
+
+                $listing->last_checked_at = now();
+                $listing->next_check_at   = now()->addSeconds($listing->check_interval_sec);
+
+                if ($new !== null && $new !== $old) {
+                    $listing->last_price = $new;
+                    $listing->currency   = $cur;
+                    $listing->save();
+
+                    PriceHistory::create([
+                        'listing_id' => $listing->id,
+                        'price'      => $new,
+                        'currency'   => $cur,
+                        'seen_at'    => now(),
+                    ]);
+
+                    NotifySubscribers::dispatch($listing->id, $old, $new, $cur)->onQueue('notifications');
+                } else {
+                    $listing->save();
+                }
+
+                return;
+            }
+
             $data = $fetcher->fetch(
                 $listing->url,
                 $listing->etag,
-                optional($listing->last_modified)?->toDateTimeString()
+                $listing->last_modified?->toRfc7231String()
             );
-
-            Log::info('********FETCHER DATA: ' . json_encode($data));
 
             if (!empty($data['not_modified'])) {
                 $listing->update([
@@ -58,7 +82,7 @@ class CheckListingPrice implements ShouldQueue
                 return;
             }
 
-            $old = $listing->last_price ?? null;
+            $old = $listing->last_price;
             $new = $data['price'] ?? null;
             $cur = $data['currency'] ?? $listing->currency;
 
@@ -67,7 +91,7 @@ class CheckListingPrice implements ShouldQueue
             $listing->last_modified   = $data['last_modified'] ?? $listing->last_modified;
             $listing->next_check_at   = now()->addSeconds($listing->check_interval_sec);
 
-            if ($new && $new !== $old) {
+            if ($new !== null && $new !== $old) {
                 $listing->last_price = $new;
                 $listing->currency   = $cur;
                 $listing->save();
@@ -79,15 +103,19 @@ class CheckListingPrice implements ShouldQueue
                     'seen_at'    => now(),
                 ]);
 
+                Cache::put($cacheKey, ['price' => $new, 'currency' => $cur], now()->addMinutes(30));
+
                 NotifySubscribers::dispatch($listing->id, $old, $new, $cur)->onQueue('notifications');
             } else {
                 $listing->save();
+                if ($new !== null) {
+                    Cache::put($cacheKey, ['price' => $new, 'currency' => $cur], now()->addMinutes(30));
+                }
             }
-        }
-        catch (\Exception $e) {
-            Log::info($e);
-        }
-        finally {
+        } catch (\Throwable $e) {
+            Log::error('CheckListingPrice error', ['listingId' => $this->listingId, 'err' => $e->getMessage()]);
+            throw $e;
+        } finally {
             optional($lock)->release();
         }
     }

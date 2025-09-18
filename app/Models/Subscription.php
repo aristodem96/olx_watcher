@@ -19,6 +19,22 @@ class Subscription extends Model
         'email_verified_at' => 'datetime',
     ];
 
+    protected static function booted()
+    {
+        static::creating(function (Subscription $s) {
+            $s->email = strtolower(trim($s->email));
+
+            $verifiedAt = static::where('email', $s->email)
+                ->whereNotNull('email_verified_at')
+                ->orderByDesc('email_verified_at')
+                ->value('email_verified_at');
+
+            if ($verifiedAt && is_null($s->email_verified_at)) {
+                $s->email_verified_at = $verifiedAt;
+            }
+        });
+    }
+
     public function listing()
     {
         return $this->belongsTo(Listing::class);
