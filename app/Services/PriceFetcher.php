@@ -13,7 +13,6 @@ class PriceFetcher
         $this->http = $http ?: new Client([
             'timeout' => 12,
             'headers' => [
-                // “людський” набір заголовків
                 'User-Agent'      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36',
                 'Accept'          => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language' => 'uk-UA,uk;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -31,8 +30,6 @@ class PriceFetcher
         if ($lastModified) $headers['If-Modified-Since'] = gmdate('D, d M Y H:i:s \G\M\T', strtotime($lastModified));
 
         $resp = $this->http->get($url, ['headers' => $headers]);
-        Log::info('***RESPONSE STATUS CODE***');
-        Log::info($resp->getStatusCode());
         if ($resp->getStatusCode() === 304) {
             return ['not_modified' => true];
         }

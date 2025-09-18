@@ -41,9 +41,6 @@ class CheckListingPrice implements ShouldQueue
                 $old = $listing->last_price;
                 $new = $cached['price'] ?? null;
                 $cur = $cached['currency'] ?? $listing->currency;
-                Log::info('***CACHE:***');
-                Log::info('New price: ' . $new);
-                Log::info('OLD price: ' . $old);
 
                 $listing->last_checked_at = now();
                 $listing->next_check_at   = now()->addSeconds($listing->check_interval_sec);

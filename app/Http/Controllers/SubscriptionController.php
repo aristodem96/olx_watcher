@@ -30,7 +30,6 @@ class SubscriptionController extends Controller
             'email'      => $email,
         ]);
 
-        Log::info('Email is verified: ' . ($subscription->isVerified() ? 'true' : 'false'));
 
         if (!$subscription->isVerified()) {
             $verifyUrl = URL::temporarySignedRoute(
